@@ -1,6 +1,6 @@
-#include <stdio.h>
 #include <math.h>
-#include <assert.h>
+
+#include "sq_eq.h"
 
 /*!
  * Checks if all input floating point arguments are finite
@@ -35,22 +35,6 @@ enum EqType
 	INFINITE_ROOTS
 };
 
-int get_type (const double a,
-	      const double b,
-	      const double c);
-
-double get_discriminant (const double a,
-			 const double b,
-			 const double c);
-
-double solve_linear (const double k,
-		     const double b);
-
-void solve_square (const double a,
-		   const double b,
-		   const double c,
-		   double *x1,
-		   double *x2);
 
 /*!
  Provides interface to communicate with user
@@ -58,13 +42,16 @@ void solve_square (const double a,
 int main ()
 {
 	double a = 0, b = 0, c = 0;
-	double x1 = 0, x2 = 0;
+	double d = 0, x1 = 0, x2 = 0;
+
+	if (run_unittests () == false)
+		return 1;
 
 	printf ("Enter coefficients a, b, c: \n");
 	scanf ("%lg %lg %lg", &a, &b, &c);
 
 	printf ("Solving...\n");
-	switch(get_type (a, b, c))
+	switch(get_type (a, b, c, &d))
 	{
 		case NO_ROOTS:
 			printf ("No roots\n");
@@ -74,8 +61,8 @@ int main ()
 			printf ("One root: %lg\n", x1);
 			break;
 		case SQUARE:
-			solve_square (a, b, c, &x1, &x2);
-			if (x1 == x2)
+			solve_square (a, b, d, &x1, &x2);
+			if (IsEqual (d, 0, DEFAULT_PRECISION))
 				printf ("One root: %lg\n", x1);
 			else
 				printf ("Two roots: %lg, %lg\n", x1, x2);
@@ -92,11 +79,13 @@ int main ()
 }
 
 /*!
-  Returns the type of equation a*x^2 + b*x + c = 0 by number of roots
+  Returns the type of equation a*x^2 + b*x + c = 0 by number of roots and puts to "d" parameter discriminant if possible
 
  \param [in]	a	a-coefficient
  \param [in]	b	b-coefficient
  \param [in]	c	c-coefficient
+
+ \param [out]	d	pointer where discriminant (b^2 - 4*a*c) should be put
 
  \return	NO_ROOTS - if the equation have no roots
 		LINEAR - if the equation is linear (a == 0, b != 0)
@@ -107,15 +96,17 @@ int main ()
  */
 int get_type (const double a,
 	      const double b,
-	      const double c)
+	      const double c,
+	      double *d)
 {
 	IS_FINITE_3 (a, b, c);
+	assert (d != NULL);
 
-	if (a == 0)
+	if (IsEqual (a, 0, DEFAULT_PRECISION))
 	{
-		if (b == 0)
+		if (IsEqual (b, 0, DEFAULT_PRECISION))
 		{
-			if (c == 0)
+			if (IsEqual (c, 0, DEFAULT_PRECISION))
 				return INFINITE_ROOTS;
 			else
 				return NO_ROOTS;
@@ -125,7 +116,8 @@ int get_type (const double a,
 	}
 	else
 	{
-		if (get_discriminant (a, b, c) < 0)
+		*d = get_discriminant (a, b, c);
+		if (*d < 0)
 			return NO_ROOTS;
 		else
 			return SQUARE;
@@ -137,7 +129,8 @@ int get_type (const double a,
 
  \param [in]	a	a-coefficient
  \param [in]	b	b-coefficient
- \param [in]	c	c-coefficient
+ \param [in]	d	discriminant value (b^2 - 4*a*c)
+
  \param [out]	x1	Pointer to the first root
  \param [out]	x2	Pointer to the second root
 
@@ -147,7 +140,7 @@ int get_type (const double a,
  */
 void solve_square (const double a,
 		   const double b,
-		   const double c,
+		   const double d,
 		   double *x1,
 		   double *x2)
 {
@@ -155,10 +148,9 @@ void solve_square (const double a,
 	assert (x2 != NULL);
 	assert (x1 != x2);
 
-	assert (a != 0);
-	IS_FINITE_3 (a, b, c);
-
-	double d = get_discriminant (a, b, c);
+	IS_FINITE_3 (a, b, d);
+	assert (!IsEqual(a, 0, DEFAULT_PRECISION));
+	assert (d > 0);
 
 	*x1 = (-b - sqrt (d)) / 2 / a;
 	*x2 = (-b + sqrt (d)) / 2 / a;
@@ -203,4 +195,20 @@ double get_discriminant (const double a,
 	IS_FINITE_3 (a, b, c);
 
 	return b * b - 4 * a * c;
+}
+
+/**
+ * Checks that two doubles are equal accurate to precision value
+ *
+ * \param [in]	d1		first double
+ * \param [in]	d2		second double
+ * \param [in]	precision	required precision
+ *
+ * \return	True if |d1 - d2| < precision * max (1.0, d1, d2); False otherwise
+ */
+bool IsEqual(double d1, double d2, double precision)
+{
+	if (fabs (d1 - d2) < precision * fmax (1.0, fmax (d1, d2)))
+		return true;
+	return false;
 }

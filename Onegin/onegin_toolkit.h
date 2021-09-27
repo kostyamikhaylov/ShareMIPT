@@ -10,6 +10,7 @@
  * For more informaton, run program with -h key.
  */
 #define KEYS_HELP		0x00000001
+#define KEYS_ERROR		0x00000002
 #define KEYS_FILENAME_TO	0x00000010
 #define KEYS_FILENAME_FROM	0x00000020
 #define KEYS_ENUMERATE		0x00000040
@@ -17,12 +18,26 @@
 #define KEYS_REVERSE		0x00000200
 #define KEYS_SORT_FROM_END	0x00000400
 
+/*
+ * A struct for holding all the data for the sorting
+ *
+ */
+struct text
+{
+	char *text = NULL;
+	size_t text_len = 0;
+	char **index = NULL;
+	size_t index_len = 0;
+	int keys = KEYS_HELP;
+	char *filename_from = NULL;
+	char *filename_to = NULL;
+};
 
-int parse_arguments (const int argc, char *argv[], char **filename_from, char **filename_to);
+int parse_arguments (const int argc, char *argv[], struct text *hamlet);
 void print_help (char *prog_name);
-char *get_text (const char *filename_from, size_t *text_len);
-char **index_text (char *text, const size_t text_len, size_t *index_len);
-void sort_text (char **index, const size_t index_len, const int keys);
-int print_text (char **index, const size_t index_len, const char *filename_to, const int keys);
+int get_text (struct text *hamlet);
+int index_text (struct text *hamlet);
+void sort_text (struct text *hamlet);
+int print_text (struct text *hamlet);
 
 #endif // ONEGIN_TOOLKIT_H

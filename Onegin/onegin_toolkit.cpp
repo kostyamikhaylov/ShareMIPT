@@ -15,56 +15,59 @@ char default_filename_to[] = "Sorted.txt";		// Default output file
 static int get_keys (char *str);
 static int compare (const void *first, const void *second);
 static int compare_reverse (const void *first, const void *second);
-static const char *process_punctuation (const char *str, const bool reverse);
 static int strcicmp (const char *a, const char *b);
 
 /**
- * Parses command line arguments
+ * Parses command line arguments. Puts keys and source and output file names to the structure hamlet.
  *
  * \param [in]	argc		number of arguments
  * \param [in]	argv		arguments vector
- * \param [out]	filename_from	name of source file
- * \param [out]	filename_to	name of file for output
+ * \param [out]	hamlet		structure which holds all the information
  *
- * \return	keys value (OR'ed keys, see header)
+ * \return	0 in case of success, 1 otherwice
  */
-int parse_arguments (const int argc, char *argv[], char **filename_from, char **filename_to)
+int parse_arguments (const int argc, char *argv[], struct text *hamlet)
 {
-	int keys = 0;
-	*filename_from = NULL;
-	*filename_to = NULL;
+	int err = 0, keys = 0;
 	for (int i = 1; i < argc; i++) {
 		if (argv[i][0] != '-') {
 			break;
 		} else if (!strcmp (argv[i], "-o")) {
 			if (++i < argc) {
-				*filename_to = argv[i];
+				hamlet->filename_to = argv[i];
 				keys |= KEYS_FILENAME_TO;
 			} else {
 				printf ("parce_arguments () error: ");
 				printf ("no filename after -o key\n");
-				keys = KEYS_HELP;
+				keys |= KEYS_HELP;
+				keys |= KEYS_ERROR;
+				err = 1;
 			}
 		} else if (!strcmp (argv[i], "-i")) {
 			if (++i < argc) {
-				*filename_from = argv[i];
+				hamlet->filename_from = argv[i];
 				keys |= KEYS_FILENAME_FROM;
 			} else {
 				printf ("parce_arguments () error: ");
 				printf ("no filename after -i key\n");
-				keys = KEYS_HELP;
+				keys |= KEYS_HELP;
+				keys |= KEYS_ERROR;
+				err = 1;
 			}
 		} else {
 			keys |= get_keys (argv[i] + 1);
+			if (keys & KEYS_ERROR)
+				err = 1;
 		}
 	}
 
-	if (!*filename_from)
-		*filename_from = default_filename_from;
-	if (!*filename_to)
-		*filename_to = default_filename_to;
+	if (!hamlet->filename_from)
+		hamlet->filename_from = default_filename_from;
+	if (!hamlet->filename_to)
+		hamlet->filename_to = default_filename_to;
 
-	return keys;
+	hamlet->keys = keys;
+	return err;
 }
 
 /**
@@ -99,6 +102,7 @@ static int get_keys (char *str)
 				printf ("parce_arguments () error: ");
 				printf ("unknown argument %c\n", str[i]);
 				keys |= KEYS_HELP;
+				keys |= KEYS_ERROR;
 				break;
 		}
 		i++;
@@ -136,109 +140,102 @@ void print_help (char *prog_name)
 }
 
 /**
- * Checks the input file length, allocates buffer of the same length and then copies the file content into it. Passes text length via the last argument. In case of failure, returns NULL
+ * Checks the input file length, allocates buffer of the same length and then copies the file content into it. Stores the text and its length in hamlet structure
  *
- * \param [in]	filename_from	the name of the program being executed
- * \param [out]	text_len	pointer to a variable to store the length of the text
+ * \param [in,out]	hamlet	pointer to a structure to take input filename from and to store the length of the text in
  *
- * \return	in case of success, returns pointer to the allocated buffer with text. If allocating the buffer, reading or opening the file fails, returns NULL
+ * \return	0 in case of success, 1 otherwice (if allocating the buffer, reading or opening the file failed)
  */
-char *get_text (const char *filename_from, size_t *text_len)
+int get_text (struct text *hamlet)
 {
 	int fd = -1;
 	struct stat st;
-	char *text = NULL;
 
-	if ((fd = open (filename_from, O_RDONLY)) < 1) {
-		printf ("get_text () error: can't open file \"%s\"", filename_from);
+	if ((fd = open (hamlet->filename_from, O_RDONLY)) < 1) {
+		printf ("get_text () error: can't open file \"%s\"", hamlet->filename_from);
 		perror ("");
-		return NULL;
+		return 1;
 	}
 
 	if (fstat (fd, &st) < 0) {
 		perror ("get_text () error: fstat syscall failed");
 		close (fd);
-		return NULL;
+		return 1;
 	}
 
-	*text_len = (size_t) st.st_size;
+	hamlet->text_len = (size_t) st.st_size;
 
-	text = (char *) calloc (*text_len + 1, sizeof (*text));
-	if (!text) {
+	hamlet->text = (char *) calloc (hamlet->text_len + 1, sizeof (*hamlet->text));
+	if (!hamlet->text) {
 		perror ("get_text () error: can't allocate memory for text");
 		close (fd);
-		return NULL;
+		return 1;
 	}
 
-	if (read (fd, text, *text_len) < (ssize_t) *text_len) {
+	if (read (fd, hamlet->text, hamlet->text_len) < (ssize_t) hamlet->text_len) {
 		perror ("get_text () error: read syscall failed, can't read the whole file");
-		free (text);
+		free (hamlet->text);
 		close (fd);
-		return NULL;
+		return 1;
 	}
 
 	close (fd);
-	return text;
+	return 0;
 }
 
 /**
- * Divides plain text into strings. The pointers to the beginnings of strings are stored in index array. In this function it is allocated, filled in and returned in case of success
+ * Divides plain text into strings. The pointers to the beginnings of strings are stored in index array in hamlet structure, which is allocated, filled in this function. Length of index array is also written to hamlet here
  *
- * \param [in]	text		plain text, later divided into strings with '\0' symbols
- * \param [in]	text_len	text length
- * \param [out]	index_len	pointer to the variable to put the length of index array (the number of strings)
+ * \param [in, out]	hamlet		structure with text and indices
  *
- * \return	in case of success, returns pointer to the index array. If allocating the buffer fails, returns NULL
+ * \return	0 in case of success, 1 otherwice (if failed to allocate index array)
  */
-char **index_text (char *text, const size_t text_len, size_t *index_len)
+int index_text (struct text *hamlet)
 {
 	size_t index_cnt = 0;
-	char **index = NULL;
 
-	for (size_t i = 0; i < text_len; i++) {
-		if (text[i] == '\n') {
-			text[i] = '\0';
+	for (size_t i = 0; i < hamlet->text_len; i++) {
+		if (hamlet->text[i] == '\n') {
+			hamlet->text[i] = '\0';
 			index_cnt++;
 		}
 	}
 
-	*index_len = index_cnt;
+	hamlet->index_len = index_cnt;
 
-	index = (char **) calloc (index_cnt, sizeof (*index));
-	if (!index){
+	hamlet->index = (char **) calloc (index_cnt, sizeof (*hamlet->index));
+	if (!hamlet->index){
 		perror ("index_text () error: read () syscall error");
-		return NULL;
+		return 1;
 	}
 
 	index_cnt = 1;
-	index[0] = text;
-	for (size_t i = 1; i < text_len; i++) {
-		if (text[i-1] == '\0') {
-			index[index_cnt] = text + i;
+	hamlet->index[0] = hamlet->text;
+	for (size_t i = 1; i < hamlet->text_len; i++) {
+		if (hamlet->text[i-1] == '\0') {
+			hamlet->index[index_cnt] = hamlet->text + i;
 			index_cnt++;
 		}
 	}
 
-	return index;
+	return 0;
 }
 
 /**
  * Sorts the text by moving indices according to keys
  *
- * \param [in]	index		index array for sorting
- * \param [in]	index_len	index array length (the number of strings)
- * \param [in]	keys		keys, according to which the text is sorted
+ * \param [in, out]	hamlet	structure that contains indices to sort and keys
  *
  * \return	Nothing
  */
-void sort_text (char **index, const size_t index_len, const int keys)
+void sort_text (struct text *hamlet)
 {
-	if (keys & KEYS_NO_SORT)
+	if (hamlet->keys & KEYS_NO_SORT)
 		return ;
-	if (keys & KEYS_SORT_FROM_END) {
-		qsort (index, index_len, sizeof (*index), compare_reverse);
+	if (hamlet->keys & KEYS_SORT_FROM_END) {
+		qsort (hamlet->index, hamlet->index_len, sizeof (*hamlet->index), compare_reverse);
 	} else {
-		qsort (index, index_len, sizeof (*index), compare);
+		qsort (hamlet->index, hamlet->index_len, sizeof (*hamlet->index), compare);
 	}
 	return ;
 }
@@ -250,7 +247,7 @@ void sort_text (char **index, const size_t index_len, const int keys)
  * \param [in]	second		void*-casted pointer to pointer to the second string
  *
  * \return	Integer less than, equal to, or greater than zero if first string is found, respectively, to be less than, to match, or be greater than second
- * \note	The comparison is case insensitive and skips leading punctuation characters
+ * \note	The comparison is case insensitive and skips all punctuation characters
  */
 static int compare (const void *first, const void *second)
 {
@@ -258,22 +255,20 @@ static int compare (const void *first, const void *second)
 	const long int *li_ptr_second = (const long int *) second;
 	const long int li_first = *li_ptr_first;
 	const long int li_second = *li_ptr_second;
-	const char *str1_unprocessed = (const char *) li_first;
-	const char *str2_unprocessed = (const char *) li_second;
-	const char *str1 = process_punctuation (str1_unprocessed, false);
-	const char *str2 = process_punctuation (str2_unprocessed, false);
+	const char *str1 = (const char *) li_first;
+	const char *str2 = (const char *) li_second;
 
 	return strcicmp (str1, str2);
 }
 
 /**
- * Compares two strings in case insensitive manner from end to beginning
+ * Compares two strings in case and punctuation insensitive manner from end to beginning
  *
  * \param [in]	first		void*-casted pointer to pointer to the first string
  * \param [in]	second		void*-casted pointer to pointer to the second string
  *
  * \return	Integer less than, equal to, or greater than zero if first string is found, respectively, to be less than, to match, or be greater than second
- * \note	The comparison is made from the last string characters to first, is case insensitive and skips leading punctuation characters
+ * \note	The comparison is made from the last string characters to first, is case insensitive and skips all punctuation characters
  */
 static int compare_reverse (const void *first, const void *second)
 {
@@ -282,47 +277,23 @@ static int compare_reverse (const void *first, const void *second)
 	const long int *li_ptr_second = (const long int *) second;
 	const long int li_first = *li_ptr_first;
 	const long int li_second = *li_ptr_second;
-	const char *str1_unprocessed = (const char *) li_first;
-	const char *str2_unprocessed = (const char *) li_second;
-	const char *str1 = process_punctuation (str1_unprocessed, true);
-	const char *str2 = process_punctuation (str2_unprocessed, true);
+	const char *str1 = (const char *) li_first;
+	const char *str2 = (const char *) li_second;
+	const char *a = str1 + strlen (str1);
+	const char *b = str2 + strlen (str2);
 
-	for (;; str1--, str2--) {
-		d = tolower ((unsigned char) *str1) -
-		    tolower ((unsigned char) *str2);
-		if (d != 0 || str1 == str1_unprocessed)
+	for (;; a--, b--) {
+		while (ispunct (*a)) { a--; };
+		while (ispunct (*b)) { b--; };
+		d = tolower ((unsigned char) *a) -
+		    tolower ((unsigned char) *b);
+		if (d != 0 || a == str1 || b == str2)
 			return d;
 	}
 }
 
 /**
- * Skips leading punctuation characters in a string
- *
- * \param [in]	str		pointer to the string
- * \param [in]	reverse		bool value for receiving the direction of processing
- *
- * \return	pointer to first non-punctuation character if reverse is false, otherwice pointer to the last non-punctuation character of the string str
- */
-static const char *process_punctuation (const char *str, const bool reverse)
-{
-	const char *s = str;
-	if (reverse) {
-		if (strlen (str))
-			s = str + strlen (str) - 1;
-		while (ispunct (*s) && s != str) {
-			s--;
-		}
-		return s;
-	}
-
-	while (ispunct (*s)) {
-		s++;
-	}
-	return s;
-}
-
-/**
- * Compares two strings in case insensitive manner
+ * Compares two strings in case and punctuation insensitive manner
  *
  * \param [in]	a		pointer to the first string
  * \param [in]	b		pointer to the second string
@@ -333,6 +304,8 @@ static int strcicmp (const char *a, const char *b)
 {
 	int d = 0;
 	for (;; a++, b++) {
+		while (ispunct (*a)) { a++; };
+		while (ispunct (*b)) { b++; };
 		d = tolower ((unsigned char) *a) -
 		    tolower ((unsigned char) *b);
 		if (d != 0 || !*a)
@@ -343,33 +316,30 @@ static int strcicmp (const char *a, const char *b)
 /**
  * Prints the sorted strings to the output file according to specified keys
  *
- * \param [in]	index		array of string indices
- * \param [in]	index_len	length of index array
- * \param [in]	filename_to	name of file to print the strings
- * \param [in]	keys		keys defining the format of printing
+ * \param [in]	hamlet		structure that contains name of output file, sorted lines and keys for printing
  *
- * \return	If opening the output file or printing to it failed, returns non-zero value; otherwice, returns 0
+ * \return	0 in case of success, 1 otherwice (if opening the output file or printing to it failed)
  * \note	Empty strings are not printed
  */
-int print_text (char **index, const size_t index_len, const char *filename_to, const int keys)
+int print_text (struct text *hamlet)
 {
 	FILE* file = NULL;
 	size_t str_len = 0, str_num = 1;
 
-	file = fopen (filename_to, "w");
+	file = fopen (hamlet->filename_to, "w");
 	if (!file) {
-		printf ("print_text () error: can't open file \"%s\"", filename_to);
+		printf ("print_text () error: can't open file \"%s\"", hamlet->filename_to);
 		perror ("");
 		return 1;
 	}
 
-	if (keys & KEYS_REVERSE) {
-		for (size_t i = index_len - 1; i != SIZE_MAX; i--) {
-			str_len = strlen (index[i]);
+	if (hamlet->keys & KEYS_REVERSE) {
+		for (size_t i = hamlet->index_len - 1; i != SIZE_MAX; i--) {
+			str_len = strlen (hamlet->index[i]);
 			if (!str_len)
 				continue;
-			if (keys & KEYS_ENUMERATE){
-				if (fprintf (file, "%6lu) %s\n", str_num++, index[i]) < (int) str_len + 9)
+			if (hamlet->keys & KEYS_ENUMERATE){
+				if (fprintf (file, "%6lu) %s\n", str_num++, hamlet->index[i]) < (int) str_len + 9)
 				{
 					printf ("print_text () error: fprintf () failed on iteration %lu", i);
 					perror ("");
@@ -377,7 +347,7 @@ int print_text (char **index, const size_t index_len, const char *filename_to, c
 					return 1;
 				}
 			} else {
-				if (fprintf (file, "%s\n", index[i]) < (int) str_len + 1)
+				if (fprintf (file, "%s\n", hamlet->index[i]) < (int) str_len + 1)
 				{
 					printf ("print_text () error: fprintf () failed on iteration %lu", i);
 					perror ("");
@@ -388,12 +358,12 @@ int print_text (char **index, const size_t index_len, const char *filename_to, c
 		}
 	}
 	else {
-		for (size_t i = 0; i < index_len; i++) {
-			str_len = strlen (index[i]);
+		for (size_t i = 0; i < hamlet->index_len; i++) {
+			str_len = strlen (hamlet->index[i]);
 			if (!str_len)
 				continue;
-			if (keys & KEYS_ENUMERATE){
-				if (fprintf (file, "%6lu) %s\n", str_num++, index[i]) < (int) str_len + 9)
+			if (hamlet->keys & KEYS_ENUMERATE){
+				if (fprintf (file, "%6lu) %s\n", str_num++, hamlet->index[i]) < (int) str_len + 9)
 				{
 					printf ("print_text () error: fprintf () failed on iteration %lu", i);
 					perror ("");
@@ -401,7 +371,7 @@ int print_text (char **index, const size_t index_len, const char *filename_to, c
 					return 1;
 				}
 			} else {
-				if (fprintf (file, "%s\n", index[i]) < (int) str_len + 1)
+				if (fprintf (file, "%s\n", hamlet->index[i]) < (int) str_len + 1)
 				{
 					printf ("print_text () error: fprintf () failed on iteration %lu", i);
 					perror ("");

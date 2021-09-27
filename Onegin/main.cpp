@@ -3,41 +3,38 @@
 
 int main (int argc, char *argv[])
 {
-	int keys = 0;
-	char *filename_to = NULL, *filename_from = NULL;
-	char *text = NULL;
-	size_t text_len = 0, index_len = 0;
-	char **index = NULL;
+	int err = 0;
+	struct text hamlet = {};
 
-	keys = parse_arguments (argc, argv, &filename_from, &filename_to);
+	err = parse_arguments (argc, argv, &hamlet);
 
-	if (keys & KEYS_HELP) {
+	if (hamlet.keys & KEYS_HELP) {
 		print_help (argv[0]);
-		return 0;
+		return (hamlet.keys & KEYS_ERROR);
 	}
 
-	text = get_text (filename_from, &text_len);
-	if (!text) {
+	err = get_text (&hamlet);
+	if (err) {
 		return 1;
 	}
 
-	index = index_text (text, text_len, &index_len);
-	if (!index) {
-		free (text);
+	err = index_text (&hamlet);
+	if (err) {
+		free (hamlet.text);
 		return 1;
 	}
 
-	sort_text (index, index_len, keys);
+	sort_text (&hamlet);
 
-	if (print_text (index, index_len, filename_to, keys))
+	err = print_text (&hamlet);
 	{
-		free (index);
-		free (text);
+		free (hamlet.index);
+		free (hamlet.text);
 		return 1;
 	}
 
-	free (text);
-	free (index);
+	free (hamlet.text);
+	free (hamlet.index);
 	return 0;
 }
 

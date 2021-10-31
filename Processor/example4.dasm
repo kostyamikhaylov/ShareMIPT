@@ -1,0 +1,14 @@
+push 0
+pop ax
+push ax
+push 10
+ja 38
+push ax
+push ax
+mul
+out
+push ax
+push 1
+add
+jmp 5
+hlt

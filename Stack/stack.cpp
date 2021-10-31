@@ -56,7 +56,7 @@ enum error_type stack_push (Stack *stack, const void *value)
 
 	int elem_size = stack->elem_descr.elem_size;
 
-	if (stack->size + 1 > stack->capacity) {
+	if (stack->size + 1 >= stack->capacity) {
 		if (alloc_more (stack)) {
 			fprintf (stderr, "stack_push (): failed to allocate more memory for pushing a new element\n");
 			return NO_MEMORY;

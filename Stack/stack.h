@@ -57,11 +57,4 @@ void dump_stack (const Stack *stack, const char *reason, const char *detected_co
 int get_hash (Stack *stack);
 hash_t count_hash (const char *ptr, size_t len);
 
-#ifdef UNIT_TESTING
-extern bool run_unittests (void);
-#else // !UNIT_TESTING
-inline bool run_unittests (void);
-inline bool run_unittests (void) { return true; }
-#endif // INUT_TESTING
-
 #endif // STACK_H

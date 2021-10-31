@@ -1,0 +1,17 @@
+0000  07                         IN
+0001  42                  00     POP ax
+0003  07                         IN
+0004  42                  01     POP bx
+0006  07                         IN
+0007  42                  02     POP cx
+0009  41                  01     PUSH bx
+000b  41                  01     PUSH bx
+000d  05                         MUL
+000e  21    04 00 00 00          PUSH 4
+0013  41                  00     PUSH ax
+0015  41                  02     PUSH cx
+0017  05                         MUL
+0018  05                         MUL
+0019  04                         SUB
+001a  08                         OUT
+001b  00                         HLT
